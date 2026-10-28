@@ -38,12 +38,16 @@ Hooks.once("init", () => {
   registerSettings();
   registerChatImageDrop();
 
-  Hooks.on("globalPlaylistVolumeChanged", () => {
-    refreshChatYouTubeVolume();
-    refreshPlaylistYouTubeVolumes();
+  Hooks.on("globalPlaylistVolumeChanged", volume => {
+    refreshChatYouTubeVolume(volume);
+    refreshPlaylistYouTubeVolumes("music", volume);
   });
-  Hooks.on("globalAmbientVolumeChanged", refreshPlaylistYouTubeVolumes);
-  Hooks.on("globalInterfaceVolumeChanged", refreshPlaylistYouTubeVolumes);
+  Hooks.on("globalAmbientVolumeChanged", volume => {
+    refreshPlaylistYouTubeVolumes("environment", volume);
+  });
+  Hooks.on("globalInterfaceVolumeChanged", volume => {
+    refreshPlaylistYouTubeVolumes("interface", volume);
+  });
 
   if (globalThis.libWrapper) {
     libWrapper.register(MODULE_ID, "Scene.prototype.view", viewWithTvStatic, "WRAPPER");

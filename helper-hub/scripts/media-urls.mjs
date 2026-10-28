@@ -135,16 +135,19 @@ export function parseYouTubeTime(raw) {
 
 /**
  * Embed URL for a parsed video. Uses the core helper when its id is already clean.
+ * Playlist frames pass autoplay so a blocked playVideo() still has a browser attempt.
  * @param {string} originalHref
  * @param {string} videoId
  * @param {number | null} startSeconds
+ * @param {{autoplay?: boolean}} [options]
  * @returns {string}
  */
-export function youtubeEmbedURL(originalHref, videoId, startSeconds) {
+export function youtubeEmbedURL(originalHref, videoId, startSeconds, options = {}) {
   if (!YOUTUBE_ID.test(videoId)) return "";
   const start = Number.isFinite(startSeconds) ? Math.floor(startSeconds) : null;
   const vars = {};
   if ((start !== null) && (start >= 0)) vars.start = String(start);
+  if (options.autoplay) vars.autoplay = "1";
 
   const helper = globalThis.game?.video;
   const coreId = helper?.getYouTubeId?.(originalHref) ?? "";
@@ -156,6 +159,7 @@ export function youtubeEmbedURL(originalHref, videoId, startSeconds) {
   const embed = new URL(`https://www.youtube.com/embed/${videoId}`);
   embed.searchParams.set("enablejsapi", "1");
   if (vars.start !== undefined) embed.searchParams.set("start", vars.start);
+  if (vars.autoplay) embed.searchParams.set("autoplay", vars.autoplay);
   return embed.href;
 }
 
@@ -263,10 +267,18 @@ function firstUriListEntry(value) {
 
 /**
  * Core channel slider, or 1 when that setting is missing.
+ * A finite override is the live gain from a volume hook. Foundry emits that hook
+ * before it stores globalMute, so the hook number wins. A later read with no
+ * override still treats global mute as silence.
  * @param {string} setting
+ * @param {number} [override]
  * @returns {number}
  */
-export function coreVolume(setting) {
+export function coreVolume(setting, override) {
+  if ((typeof override === "number") && Number.isFinite(override)) {
+    return Math.min(1, Math.max(0, override));
+  }
+  if (globalThis.game?.audio?.globalMute) return 0;
   const settings = globalThis.game?.settings;
   if (!settings?.settings?.has(`core.${setting}`)) return 1;
   const value = settings.get("core", setting);
@@ -289,19 +301,21 @@ export function soundChannel(sound) {
  * YouTube setVolume units. sound.volume and the channel slider are both 0-1.
  * @param {number} localVolume
  * @param {string} channel
+ * @param {number} [override]
  * @returns {number}
  */
-export function youtubePercent(localVolume, channel) {
+export function youtubePercent(localVolume, channel, override) {
   const local = (typeof localVolume === "number" && Number.isFinite(localVolume)) ? localVolume : 0;
   const setting = CHANNEL_SETTINGS[channel] ?? CHANNEL_SETTINGS.music;
-  const scaled = Math.min(1, Math.max(0, local)) * coreVolume(setting);
+  const scaled = Math.min(1, Math.max(0, local)) * coreVolume(setting, override);
   return Math.min(100, Math.max(0, Math.round(scaled * 100)));
 }
 
 /**
  * Chat playback follows the playlist slider alone.
+ * @param {number} [override]
  * @returns {number}
  */
-export function chatYouTubeVolume() {
-  return Math.min(100, Math.max(0, Math.round(coreVolume("globalPlaylistVolume") * 100)));
+export function chatYouTubeVolume(override) {
+  return Math.min(100, Math.max(0, Math.round(coreVolume("globalPlaylistVolume", override) * 100)));
 }

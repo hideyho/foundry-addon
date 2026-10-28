@@ -14,6 +14,7 @@ const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 /**
  * @typedef {object} PlaylistYouTubeEntry
  * @property {string} videoId
+ * @property {number | null} start
  * @property {number} generation
  * @property {boolean} closed
  * @property {boolean} advanced
@@ -47,10 +48,10 @@ export function registerPlaylistYouTubeMenu() {
  * @this {PlaylistSound}
  */
 export function syncPlaylistSound(wrapped) {
-  const videoId = youtubeFlag(this);
-  if (!videoId) return wrapped();
+  const track = youtubeTrack(this);
+  if (!track) return wrapped();
   releaseCoreSound(this);
-  syncYouTube(this, videoId);
+  syncYouTube(this, track);
 }
 
 /**
@@ -61,20 +62,29 @@ export function syncPlaylistSound(wrapped) {
  */
 export function onPlaylistDrop(wrapped, event) {
   const dragged = readDraggedUrl(event?.dataTransfer);
-  const video = dragged.kind === "url" ? parseYouTubeUrl(dragged.url) : null;
-  if (!video) return wrapped(event);
-  return createYouTubeSound(playlistFromEvent(event), video.id);
+  if (dragged.kind !== "url") return wrapped(event);
+  const playlist = playlistFromEvent(event);
+  if (!playlist) return wrapped(event);
+  const video = parseYouTubeUrl(dragged.url);
+  if (!video) {
+    ui.notifications.warn(game.i18n.localize("HELPERHUB.PlaylistNotYouTube"));
+    return;
+  }
+  return createYouTubeSound(playlist, video);
 }
 
 /**
  * The channel sliders do not call sync, so apply them onto players that are already running.
+ * @param {string} [channel] Only this channel uses the hook volume. Other players keep their own slider.
+ * @param {number} [volume] Live gain from the matching global volume hook.
  */
-export function refreshPlaylistYouTubeVolumes() {
+export function refreshPlaylistYouTubeVolumes(channel, volume) {
   for (const entry of players.values()) {
     if (entry.closed || !entry.player) continue;
     const sound = game.playlists.get(entry.playlistId)?.sounds.get(entry.soundId);
     if (!sound) continue;
-    applyVolume(sound, entry.player);
+    if (channel && (soundChannel(sound) !== channel)) continue;
+    applyVolume(sound, entry.player, volume);
   }
 }
 
@@ -111,7 +121,7 @@ async function promptYouTubeTrack(playlist) {
     ui.notifications.error(game.i18n.localize("HELPERHUB.PlaylistNotYouTube"));
     return;
   }
-  await createYouTubeSound(playlist, video.id);
+  await createYouTubeSound(playlist, video);
 }
 
 /**
@@ -138,14 +148,21 @@ function youtubeDialogContent() {
 
 /**
  * @param {Playlist | null} playlist
- * @param {string} videoId
+ * @param {{id?: string, start?: number | null}} video
  * @returns {Promise<void>}
  */
-async function createYouTubeSound(playlist, videoId) {
+async function createYouTubeSound(playlist, video) {
+  const videoId = video?.id ?? "";
   if (!playlist || !YOUTUBE_ID.test(videoId)) return;
   if (!canEditPlaylist(playlist)) {
     ui.notifications.error(game.i18n.localize("HELPERHUB.PlaylistNoModify"));
     return;
+  }
+
+  /** @type {{id: string, start?: number}} */
+  const flag = {id: videoId};
+  if ((typeof video.start === "number") && Number.isFinite(video.start) && (video.start >= 0)) {
+    flag.start = Math.floor(video.start);
   }
 
   const name = await youtubeTitle(videoId);
@@ -156,7 +173,7 @@ async function createYouTubeSound(playlist, videoId) {
       path: SILENCE_PATH,
       repeat: false,
       volume: 0.5,
-      flags: {[MODULE_ID]: {youtube: videoId}}
+      flags: {[MODULE_ID]: {youtube: flag}}
     }]);
   } catch (err) {
     console.warn(`${MODULE_ID} | Could not add a YouTube playlist track.`, err);
@@ -177,12 +194,20 @@ function canEditPlaylist(playlist) {
 }
 
 /**
+ * String flags from 1.0.1 are a bare video id. Newer tracks store {id, start}.
  * @param {PlaylistSound} sound
- * @returns {string}
+ * @returns {{id: string, start: number | null} | null}
  */
-function youtubeFlag(sound) {
-  const id = sound?.getFlag?.(MODULE_ID, "youtube");
-  return (typeof id === "string" && YOUTUBE_ID.test(id)) ? id : "";
+function youtubeTrack(sound) {
+  const flag = sound?.getFlag?.(MODULE_ID, "youtube");
+  if (typeof flag === "string") return YOUTUBE_ID.test(flag) ? {id: flag, start: null} : null;
+  if (!flag || (typeof flag !== "object")) return null;
+  const id = flag.id;
+  if ((typeof id !== "string") || !YOUTUBE_ID.test(id)) return null;
+  const start = (typeof flag.start === "number" && Number.isFinite(flag.start) && (flag.start >= 0))
+    ? flag.start
+    : null;
+  return {id, start};
 }
 
 /**
@@ -202,9 +227,9 @@ function releaseCoreSound(sound) {
 
 /**
  * @param {PlaylistSound} sound
- * @param {string} videoId
+ * @param {{id: string, start: number | null}} track
  */
-function syncYouTube(sound, videoId) {
+function syncYouTube(sound, track) {
   const key = playerKey(sound);
   if (!sound.playing) {
     destroyPlayer(key);
@@ -212,7 +237,7 @@ function syncYouTube(sound, videoId) {
   }
 
   const existing = players.get(key);
-  if (existing && !existing.closed && (existing.videoId === videoId)) {
+  if (existing && !existing.closed && (existing.videoId === track.id) && (existing.start === track.start)) {
     if (existing.player) applyPlayer(sound, existing.player);
     return;
   }
@@ -220,7 +245,8 @@ function syncYouTube(sound, videoId) {
   destroyPlayer(key);
   /** @type {PlaylistYouTubeEntry} */
   const entry = {
-    videoId,
+    videoId: track.id,
+    start: track.start,
     generation: (existing?.generation ?? 0) + 1,
     closed: false,
     advanced: false,
@@ -241,7 +267,7 @@ function syncYouTube(sound, videoId) {
 async function mountPlayer(entry) {
   const key = `${entry.playlistId}:${entry.soundId}`;
   const watch = `https://www.youtube.com/watch?v=${entry.videoId}`;
-  const src = youtubeEmbedURL(watch, entry.videoId, null);
+  const src = youtubeEmbedURL(watch, entry.videoId, entry.start, {autoplay: true});
   if (!src) {
     destroyPlayer(key);
     return;
@@ -275,7 +301,7 @@ async function mountPlayer(entry) {
     }
     entry.player = player;
     const sound = game.playlists.get(entry.playlistId)?.sounds.get(entry.soundId);
-    if (!sound?.playing || (youtubeFlag(sound) !== entry.videoId)) {
+    if (!sound?.playing || (youtubeTrack(sound)?.id !== entry.videoId)) {
       destroyPlayer(key);
       return;
     }
@@ -295,7 +321,7 @@ function onPlaylistState(entry, event) {
   if ((typeof YT === "undefined") || (event?.data !== YT.PlayerState.ENDED)) return;
 
   const sound = game.playlists.get(entry.playlistId)?.sounds.get(entry.soundId);
-  if (!sound || (youtubeFlag(sound) !== entry.videoId)) return;
+  if (!sound || (youtubeTrack(sound)?.id !== entry.videoId)) return;
   if (sound.repeat) {
     try { entry.player?.playVideo(); } catch { /* the player was removed */ }
     return;
@@ -339,10 +365,11 @@ function applyPlayer(sound, player) {
 /**
  * @param {PlaylistSound} sound
  * @param {YT.Player} player
+ * @param {number} [override]
  */
-function applyVolume(sound, player) {
+function applyVolume(sound, player, override) {
   try {
-    player.setVolume(youtubePercent(sound.volume, soundChannel(sound)));
+    player.setVolume(youtubePercent(sound.volume, soundChannel(sound), override));
   } catch {
     // Volume can be set once the player is ready.
   }

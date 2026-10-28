@@ -14,6 +14,7 @@
   "HELPERHUB.DropNoPermission": "You do not have permission to upload files.",
   "HELPERHUB.DropUploadFailed": "An image failed to upload.",
   "HELPERHUB.DropPostFailed": "The images uploaded, but the chat message could not be posted.",
+  "HELPERHUB.LinkPostFailed": "The link could not be posted to chat.",
   "HELPERHUB.DropBusy": "An image upload is already in progress.",
   "HELPERHUB.DropUrlUnsupported": "Only an image or YouTube link can be dropped into chat.",
   "HELPERHUB.PlaylistYouTube": "Add YouTube Video",

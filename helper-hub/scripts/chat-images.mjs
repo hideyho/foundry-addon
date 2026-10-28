@@ -29,6 +29,9 @@ let chatToken = 0;
 export function registerChatImageDrop() {
   Hooks.on("chatMessage", onChatMessage);
   Hooks.on("renderChatMessageHTML", onRenderChatMessageHTML);
+  Hooks.on("deleteChatMessage", message => {
+    if (message?.id) startedChatVideos.delete(message.id);
+  });
 
   Hooks.once("ready", () => {
     if (!game.user.isGM) return;
@@ -296,7 +299,7 @@ function onChatMessage(_log, message) {
   if (!media) return;
   void postChatMedia(media).catch(err => {
     console.warn(`${MODULE_ID} | Failed to post a chat link.`, err);
-    ui.notifications.warn(game.i18n.localize("HELPERHUB.DropPostFailed"));
+    ui.notifications.warn(game.i18n.localize("HELPERHUB.LinkPostFailed"));
   });
   return false;
 }
@@ -321,7 +324,7 @@ async function handleUrlDrop(event) {
     await postChatMedia(media);
   } catch (err) {
     console.warn(`${MODULE_ID} | Failed to post a dropped chat link.`, err);
-    ui.notifications.warn(game.i18n.localize("HELPERHUB.DropPostFailed"));
+    ui.notifications.warn(game.i18n.localize("HELPERHUB.LinkPostFailed"));
   }
 }
 
@@ -358,9 +361,9 @@ function youtubeMessageContent(video) {
   if (embed.protocol !== "https:") throw new Error("Refusing a non-https YouTube embed.");
 
   const iframe = document.createElement("iframe");
-  iframe.id = `helper-hub-yt-${foundry.utils.randomID()}`;
   iframe.className = "helper-hub-youtube";
   iframe.setAttribute("src", embed.href);
+  iframe.setAttribute("allow", "autoplay");
   iframe.setAttribute("title", "YouTube");
   return iframe.outerHTML;
 }
@@ -373,12 +376,14 @@ function onRenderChatMessageHTML(message, html) {
   if (!(html instanceof HTMLElement) || !message?.id || startedChatVideos.has(message.id)) return;
   const iframe = html.querySelector("iframe.helper-hub-youtube");
   if (!(iframe instanceof HTMLIFrameElement)) return;
-  if (!iframe.id) iframe.id = `helper-hub-yt-${message.id}`;
-  startedChatVideos.add(message.id);
+  iframe.id = `helper-hub-yt-${message.id}-${foundry.utils.randomID()}`;
+  iframe.setAttribute("allow", "autoplay");
   void startChatYouTube(message.id, iframe);
 }
 
 /**
+ * Wait until the iframe is in the document. Foundry fires this hook before the chat log appends it,
+ * and getYouTubePlayer only resolves from onReady, which needs getElementById to find the frame.
  * @param {string} messageId
  * @param {HTMLIFrameElement} iframe
  * @returns {Promise<void>}
@@ -386,19 +391,42 @@ function onRenderChatMessageHTML(message, html) {
 async function startChatYouTube(messageId, iframe) {
   const token = ++chatToken;
   stopChatPlayer();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  if ((token !== chatToken) || !iframe.isConnected) return;
   try {
     const player = await game.video.getYouTubePlayer(iframe.id);
     if (token !== chatToken) {
-      try { player.stopVideo(); } catch { /* a newer chat video replaced this one */ }
+      try { player.stopVideo(); } catch { /* replaced */ }
       return;
     }
+    startedChatVideos.add(messageId);
     chatPlayer = player;
-    try { player.setVolume(chatYouTubeVolume()); } catch { /* volume applies again from the slider */ }
-    try { player.playVideo(); } catch { /* autoplay can be blocked; the controls stay visible */ }
+    releaseChatVideoWhenRemoved(messageId, iframe);
+    try { player.setVolume(chatYouTubeVolume()); } catch { /* slider will retry */ }
+    try { player.playVideo(); } catch { /* controls stay on the visible iframe */ }
   } catch (err) {
-    startedChatVideos.delete(messageId);
     if (token === chatToken) console.warn(`${MODULE_ID} | Could not start a chat YouTube player.`, err);
   }
+}
+
+/**
+ * A deleted or replaced frame must be allowed to start again on the next render.
+ * @param {string} messageId
+ * @param {HTMLIFrameElement} iframe
+ */
+function releaseChatVideoWhenRemoved(messageId, iframe) {
+  const drop = () => {
+    if (iframe.isConnected) return false;
+    startedChatVideos.delete(messageId);
+    return true;
+  };
+  if (drop() || (typeof MutationObserver !== "function")) return;
+  const observer = new MutationObserver(() => {
+    if (!drop()) return;
+    observer.disconnect();
+  });
+  const root = iframe.ownerDocument?.documentElement;
+  if (root) observer.observe(root, {childList: true, subtree: true});
 }
 
 function stopChatPlayer() {
@@ -413,11 +441,12 @@ function stopChatPlayer() {
 }
 
 /**
+ * @param {number} [volume] Live playlist gain from the volume hook.
  * @returns {void}
  */
-export function refreshChatYouTubeVolume() {
+export function refreshChatYouTubeVolume(volume) {
   if (!chatPlayer) return;
-  try { chatPlayer.setVolume(chatYouTubeVolume()); } catch { /* the player is gone */ }
+  try { chatPlayer.setVolume(chatYouTubeVolume(volume)); } catch { /* the player is gone */ }
 }
 
 /**
