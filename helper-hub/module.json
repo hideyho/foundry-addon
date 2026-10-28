@@ -1,0 +1,26 @@
+{
+  "id": "helper-hub",
+  "title": "Helper Hub",
+  "description": "TV static scene transitions and dropping images into chat.",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "esmodules": ["scripts/module.mjs"],
+  "styles": [{ "src": "styles/helper-hub.css", "layer": "modules" }],
+  "languages": [
+    { "lang": "en", "name": "English", "path": "lang/en.json" },
+    { "lang": "ru", "name": "Русский", "path": "lang/ru.json" }
+  ],
+  "persistentStorage": true,
+  "relationships": {
+    "requires": [
+      {
+        "id": "lib-wrapper",
+        "type": "module",
+        "manifest": "https://github.com/ruipin/fvtt-lib-wrapper/releases/latest/download/module.json"
+      }
+    ]
+  }
+}

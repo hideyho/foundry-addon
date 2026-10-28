@@ -1,0 +1,12 @@
+@layer helper-hub {
+  .helper-hub-drop {
+    outline: 2px dashed var(--color-warm-2);
+    outline-offset: -2px;
+  }
+
+  .helper-hub-images img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+}

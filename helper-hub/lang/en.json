@@ -1,0 +1,18 @@
+{
+  "HELPERHUB.Type": "TV Static",
+  "HELPERHUB.AutoName": "Automatic TV Static",
+  "HELPERHUB.AutoHint": "Play the TV static transition when switching to a scene that has no transition type of its own.",
+  "HELPERHUB.ForceName": "Always Replace Scene Transition",
+  "HELPERHUB.ForceHint": "Use TV static even when the scene already has a transition type. Automatic mode must also be enabled.",
+  "HELPERHUB.DurationName": "Injected Duration",
+  "HELPERHUB.DurationHint": "Duration, in milliseconds, used when this module injects a TV static transition.",
+  "HELPERHUB.IntensityName": "Static Intensity",
+  "HELPERHUB.IntensityHint": "Strength of the interference. Zero leaves a bare cut; one is full static.",
+  "HELPERHUB.VolumeName": "Hiss Volume",
+  "HELPERHUB.VolumeHint": "Volume of the synthesized static hiss. Zero mutes it. Multiplied by the global ambient volume.",
+  "HELPERHUB.DropNotImage": "Only image files can be dropped into chat.",
+  "HELPERHUB.DropNoPermission": "You do not have permission to upload files.",
+  "HELPERHUB.DropUploadFailed": "An image failed to upload.",
+  "HELPERHUB.DropPostFailed": "The images uploaded, but the chat message could not be posted.",
+  "HELPERHUB.DropBusy": "An image upload is already in progress."
+}
