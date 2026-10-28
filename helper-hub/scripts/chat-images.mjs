@@ -1,4 +1,5 @@
 import {
+  chatHtmlText,
   chatYouTubeVolume,
   isImageUrl,
   parseHttpsUrl,
@@ -287,13 +288,15 @@ function isSafeUploadPath(path) {
 
 /**
  * Hooks.call does not await. Return false immediately so Foundry does not also post the raw URL.
- * A sentence that merely contains a link is not a single https URL and falls through.
+ * A bare https URL is accepted as-is. Foundry 14 otherwise sends ProseMirror HTML, so the visible
+ * text is read the same way ChatLog.parse does. A sentence that merely contains a link falls through.
  * @param {ChatLog} _log
  * @param {string} message
  * @returns {false | void}
  */
 function onChatMessage(_log, message) {
-  const url = parseHttpsUrl(message);
+  let url = parseHttpsUrl(message);
+  if (!url) url = parseHttpsUrl(chatHtmlText(message));
   if (!url) return;
   const media = classifyHttpsUrl(url);
   if (!media) return;

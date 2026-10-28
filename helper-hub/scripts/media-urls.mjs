@@ -26,6 +26,28 @@ export function parseHttpsUrl(value) {
 }
 
 /**
+ * Visible text of chat HTML, matching ChatLog.parse.
+ * A template decodes entities such as `&amp;`. Each `br` becomes a newline.
+ * Malformed markup returns null instead of throwing.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function chatHtmlText(value) {
+  if (typeof value !== "string") return null;
+  const root = globalThis.document;
+  if (!root || (typeof root.createElement !== "function")) return null;
+  try {
+    const template = root.createElement("template");
+    template.innerHTML = value;
+    template.content.querySelectorAll("br").forEach(br => br.replaceWith("\n"));
+    const text = template.content.textContent;
+    return typeof text === "string" ? text.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {string} value
  * @returns {URL | null}
  */
