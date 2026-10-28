@@ -29,6 +29,38 @@ const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
 const players = new Map();
 
 /**
+ * World-setting changes do not emit this hook in Foundry 14. The setting onChange calls the same stop.
+ * Older clients pass a map of changed keys. The singular client hook passes the key and the value.
+ */
+export function watchPlaylistYouTubeSetting() {
+  Hooks.on("clientSettingsChanged", (settings, value) => {
+    if (playlistYouTubeDisabled(settings, value)) stopLivePlaylistYouTube();
+  });
+}
+
+/**
+ * Stop every live YouTube player and drop its core Sound. Does not call PlaylistSound#sync.
+ */
+export function stopLivePlaylistYouTube() {
+  for (const entry of [...players.values()]) {
+    const sound = game.playlists.get(entry.playlistId)?.sounds.get(entry.soundId);
+    destroyPlayer(`${entry.playlistId}:${entry.soundId}`);
+    if (sound) releaseCoreSound(sound);
+  }
+}
+
+/**
+ * @param {object | string} settings
+ * @param {unknown} [value]
+ * @returns {boolean}
+ */
+function playlistYouTubeDisabled(settings, value) {
+  const key = `${MODULE_ID}.playlistYouTube`;
+  if (typeof settings === "string") return (settings === key) && (value === false);
+  return settings?.[key] === false;
+}
+
+/**
  * Right-click a playlist header to paste a YouTube URL.
  */
 export function registerPlaylistYouTubeMenu() {
@@ -36,7 +68,8 @@ export function registerPlaylistYouTubeMenu() {
     entries.push({
       label: "HELPERHUB.PlaylistYouTube",
       icon: "fa-brands fa-youtube",
-      visible: header => canEditPlaylist(playlistFromHeader(header)),
+      visible: header => game.settings.get(MODULE_ID, "playlistYouTube")
+        && canEditPlaylist(playlistFromHeader(header)),
       onClick: (_event, header) => promptYouTubeTrack(playlistFromHeader(header))
     });
   });
@@ -50,6 +83,11 @@ export function registerPlaylistYouTubeMenu() {
 export function syncPlaylistSound(wrapped) {
   const track = youtubeTrack(this);
   if (!track) return wrapped();
+  if (!game.settings.get(MODULE_ID, "playlistYouTube")) {
+    destroyPlayer(playerKey(this));
+    releaseCoreSound(this);
+    return;
+  }
   releaseCoreSound(this);
   syncYouTube(this, track);
 }
@@ -61,6 +99,7 @@ export function syncPlaylistSound(wrapped) {
  * @this {PlaylistDirectory}
  */
 export function onPlaylistDrop(wrapped, event) {
+  if (!game.settings.get(MODULE_ID, "playlistYouTube")) return wrapped(event);
   const dragged = readDraggedUrl(event?.dataTransfer);
   if (dragged.kind !== "url") return wrapped(event);
   const playlist = playlistFromEvent(event);

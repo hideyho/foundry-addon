@@ -63,6 +63,7 @@ function bindChatImageDrop(root) {
 
   root.addEventListener("dragenter", event => {
     if (dragHasFiles(event.dataTransfer)) {
+      if (!game.settings.get(MODULE_ID, "chatImages")) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
       depth += 1;
@@ -70,6 +71,7 @@ function bindChatImageDrop(root) {
       return;
     }
     if (dragHasLink(event.dataTransfer)) {
+      if (!game.settings.get(MODULE_ID, "chatLinks")) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
     }
@@ -77,11 +79,13 @@ function bindChatImageDrop(root) {
 
   root.addEventListener("dragover", event => {
     if (dragHasFiles(event.dataTransfer)) {
+      if (!game.settings.get(MODULE_ID, "chatImages")) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
       return;
     }
     if (dragHasLink(event.dataTransfer)) {
+      if (!game.settings.get(MODULE_ID, "chatLinks")) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
     }
@@ -114,6 +118,7 @@ async function handleDrop(root, event) {
     await handleUrlDrop(event);
     return;
   }
+  if (!game.settings.get(MODULE_ID, "chatImages")) return;
 
   const images = files.filter(isImageFile);
   if (!images.length) {
@@ -295,6 +300,7 @@ function isSafeUploadPath(path) {
  * @returns {false | void}
  */
 function onChatMessage(_log, message) {
+  if (!game.settings.get(MODULE_ID, "chatLinks")) return;
   let url = parseHttpsUrl(message);
   if (!url) url = parseHttpsUrl(chatHtmlText(message));
   if (!url) return;
@@ -312,6 +318,7 @@ function onChatMessage(_log, message) {
  * @returns {Promise<void>}
  */
 async function handleUrlDrop(event) {
+  if (!game.settings.get(MODULE_ID, "chatLinks")) return;
   const dragged = readDraggedUrl(event.dataTransfer);
   if (dragged.kind !== "url") return;
 

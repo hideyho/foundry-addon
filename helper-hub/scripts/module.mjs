@@ -3,7 +3,9 @@ import {
   onPlaylistDrop,
   refreshPlaylistYouTubeVolumes,
   registerPlaylistYouTubeMenu,
-  syncPlaylistSound
+  stopLivePlaylistYouTube,
+  syncPlaylistSound,
+  watchPlaylistYouTubeSetting
 } from "./playlist-youtube.mjs";
 import {TvStaticFilter, bindTvStaticFrame} from "./tv-static-filter.mjs";
 
@@ -27,16 +29,25 @@ let resumeAttempted = false;
 let loggedFilterError = false;
 
 Hooks.once("init", () => {
-  CONFIG.Canvas.sceneTransitions.tvStatic = {
-    id: TRANSITION_ID,
-    label: "HELPERHUB.Type",
-    filterClass: TvStaticFilter,
-    filterType: TRANSITION_ID,
-    defaultDuration: 1200
-  };
+  for (const [id, label, defaultDuration] of [
+    [TRANSITION_ID, "HELPERHUB.Type", 1200],
+    ["hhSmoke", "HELPERHUB.Smoke", 1600],
+    ["hhSpinner", "HELPERHUB.Spinner", 1400],
+    ["hhWhip", "HELPERHUB.Whip", 900],
+    ["hhCustom", "HELPERHUB.Custom", 1500]
+  ]) {
+    CONFIG.Canvas.sceneTransitions[id] = {
+      id,
+      label,
+      filterClass: TvStaticFilter,
+      filterType: id,
+      defaultDuration
+    };
+  }
 
   registerSettings();
   registerChatImageDrop();
+  watchPlaylistYouTubeSetting();
 
   Hooks.on("globalPlaylistVolumeChanged", volume => {
     refreshChatYouTubeVolume(volume);
@@ -50,7 +61,7 @@ Hooks.once("init", () => {
   });
 
   if (globalThis.libWrapper) {
-    libWrapper.register(MODULE_ID, "Scene.prototype.view", viewWithTvStatic, "WRAPPER");
+    libWrapper.register(MODULE_ID, "Scene.prototype.view", viewWithTransition, "WRAPPER");
     libWrapper.register(MODULE_ID, "PlaylistSound.prototype.sync", syncPlaylistSound, "MIXED");
     registerPlaylistDrop();
     registerPlaylistYouTubeMenu();
@@ -83,7 +94,7 @@ function registerPlaylistDrop() {
 }
 
 function registerSettings() {
-  const {BooleanField, NumberField} = foundry.data.fields;
+  const {BooleanField, NumberField, StringField} = foundry.data.fields;
 
   game.settings.register(MODULE_ID, "auto", {
     name: "HELPERHUB.AutoName",
@@ -151,23 +162,132 @@ function registerSettings() {
     }),
     default: 0.35
   });
+
+  // StringField writes the choice string into the option as-is, so localize here.
+  game.settings.register(MODULE_ID, "transition", {
+    name: "HELPERHUB.TransitionName",
+    hint: "HELPERHUB.TransitionHint",
+    scope: "world",
+    config: true,
+    type: new StringField({
+      required: true,
+      blank: false,
+      nullable: false,
+      initial: TRANSITION_ID,
+      choices: transitionChoices
+    }),
+    default: TRANSITION_ID
+  });
+
+  game.settings.register(MODULE_ID, "customAnimation", {
+    name: "HELPERHUB.CustomFileName",
+    hint: "HELPERHUB.CustomFileHint",
+    scope: "world",
+    config: true,
+    type: new ImageVideoPathField({
+      required: true,
+      blank: true,
+      nullable: false,
+      initial: ""
+    }),
+    default: ""
+  });
+
+  game.settings.register(MODULE_ID, "customMode", {
+    name: "HELPERHUB.CustomModeName",
+    hint: "HELPERHUB.CustomModeHint",
+    scope: "world",
+    config: true,
+    type: new StringField({
+      required: true,
+      blank: false,
+      nullable: false,
+      initial: "play",
+      choices: {
+        play: game.i18n.localize("HELPERHUB.CustomModePlay"),
+        mask: game.i18n.localize("HELPERHUB.CustomModeMask")
+      }
+    }),
+    default: "play"
+  });
+
+  for (const [key, name, hint] of [
+    ["chatImages", "HELPERHUB.ChatImagesName", "HELPERHUB.ChatImagesHint"],
+    ["chatLinks", "HELPERHUB.ChatLinksName", "HELPERHUB.ChatLinksHint"]
+  ]) {
+    game.settings.register(MODULE_ID, key, {
+      name,
+      hint,
+      scope: "world",
+      config: true,
+      type: new BooleanField({initial: true}),
+      default: true
+    });
+  }
+
+  game.settings.register(MODULE_ID, "playlistYouTube", {
+    name: "HELPERHUB.PlaylistYouTubeName",
+    hint: "HELPERHUB.PlaylistYouTubeHint",
+    scope: "world",
+    config: true,
+    type: new BooleanField({initial: true}),
+    default: true,
+    onChange: value => {
+      if (value === false) stopLivePlaylistYouTube();
+    }
+  });
 }
 
 /**
- * Inject a TV static transition when the world settings say to, without
+ * Image and video picker. FilePathField turns IMAGE+VIDEO into picker type "any".
+ */
+class ImageVideoPathField extends foundry.data.fields.StringField {
+  /** @override */
+  _toInput(config) {
+    if (config.value === undefined) config.value = this.getInitialValue({});
+    config.type = "imagevideo";
+    return foundry.applications.elements.HTMLFilePickerElement.create(config);
+  }
+}
+
+/**
+ * Choice labels are not localized by the settings form.
+ * Core entries already store keys such as SCENE.Transition.Types.fade.
+ * @returns {Record<string, string>}
+ */
+function transitionChoices() {
+  const choices = {};
+  for (const [key, definition] of Object.entries(CONFIG.Canvas.sceneTransitions ?? {})) {
+    const label = (definition && (typeof definition.label === "string")) ? definition.label : key;
+    choices[key] = game.i18n.localize(label);
+  }
+  return choices;
+}
+
+/**
+ * Inject the chosen transition when the world settings say to, without
  * touching an explicit caller transition or a scene that already chose one.
  * @param {Function} wrapped
  * @param {object} [options]
  * @this {Scene}
  */
-function viewWithTvStatic(wrapped, options = {}) {
+function viewWithTransition(wrapped, options = {}) {
   if (!shouldInject(this, options)) return wrapped(options);
 
   const duration = game.settings.get(MODULE_ID, "duration");
   const viewOptions = foundry.utils.mergeObject(options, {
-    transition: {type: TRANSITION_ID, duration}
+    transition: {type: chosenTransitionId(), duration}
   }, {inplace: false});
   return wrapped(viewOptions);
+}
+
+/**
+ * @returns {string}
+ */
+function chosenTransitionId() {
+  const saved = game.settings.get(MODULE_ID, "transition");
+  if ((typeof saved === "string") && (saved in CONFIG.Canvas.sceneTransitions)) return saved;
+  return TRANSITION_ID;
 }
 
 /**
