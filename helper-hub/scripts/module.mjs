@@ -1,4 +1,10 @@
-import {registerChatImageDrop} from "./chat-images.mjs";
+import {refreshChatYouTubeVolume, registerChatImageDrop} from "./chat-images.mjs";
+import {
+  onPlaylistDrop,
+  refreshPlaylistYouTubeVolumes,
+  registerPlaylistYouTubeMenu,
+  syncPlaylistSound
+} from "./playlist-youtube.mjs";
 import {TvStaticFilter, bindTvStaticFrame} from "./tv-static-filter.mjs";
 
 const MODULE_ID = "helper-hub";
@@ -32,15 +38,45 @@ Hooks.once("init", () => {
   registerSettings();
   registerChatImageDrop();
 
+  Hooks.on("globalPlaylistVolumeChanged", () => {
+    refreshChatYouTubeVolume();
+    refreshPlaylistYouTubeVolumes();
+  });
+  Hooks.on("globalAmbientVolumeChanged", refreshPlaylistYouTubeVolumes);
+  Hooks.on("globalInterfaceVolumeChanged", refreshPlaylistYouTubeVolumes);
+
   if (globalThis.libWrapper) {
     libWrapper.register(MODULE_ID, "Scene.prototype.view", viewWithTvStatic, "WRAPPER");
+    libWrapper.register(MODULE_ID, "PlaylistSound.prototype.sync", syncPlaylistSound, "MIXED");
+    registerPlaylistDrop();
+    registerPlaylistYouTubeMenu();
   }
   else {
     console.warn(`${MODULE_ID} | libWrapper is not available; automatic scene transitions are disabled.`);
+    console.warn(`${MODULE_ID} | libWrapper is not available; YouTube playlist tracks will not play.`);
   }
 
   bindTvStaticFrame(onFilterApplied);
 });
+
+/**
+ * libWrapper walks from globalThis. The namespaced class is the real PlaylistDirectory.
+ * The global of the same name is only a compatibility getter, used if the namespace cannot be seen.
+ */
+function registerPlaylistDrop() {
+  const targets = [
+    "foundry.applications.sidebar.tabs.PlaylistDirectory.prototype._onDrop",
+    "PlaylistDirectory.prototype._onDrop"
+  ];
+  for (const target of targets) {
+    try {
+      libWrapper.register(MODULE_ID, target, onPlaylistDrop, "MIXED");
+      return;
+    } catch (err) {
+      console.warn(`${MODULE_ID} | Could not wrap ${target}.`, err);
+    }
+  }
+}
 
 function registerSettings() {
   const {BooleanField, NumberField} = foundry.data.fields;

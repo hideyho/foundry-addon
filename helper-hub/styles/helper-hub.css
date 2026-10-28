@@ -9,4 +9,24 @@
     max-width: 100%;
     height: auto;
   }
+
+  .helper-hub-youtube {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border: 0;
+  }
+
+  /* Keep a real box. Hiding the frame with the display property lets browsers throttle playback. */
+  .helper-hub-playlist-youtube {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 320px;
+    height: 180px;
+    opacity: 0;
+    pointer-events: none;
+    border: 0;
+  }
 }

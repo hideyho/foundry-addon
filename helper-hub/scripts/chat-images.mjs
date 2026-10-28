@@ -1,3 +1,12 @@
+import {
+  chatYouTubeVolume,
+  isImageUrl,
+  parseHttpsUrl,
+  parseYouTubeUrl,
+  readDraggedUrl,
+  youtubeEmbedURL
+} from "./media-urls.mjs";
+
 const MODULE_ID = "helper-hub";
 const DROP_CLASS = "helper-hub-drop";
 const BOUND_ATTR = "data-helper-hub-drop";
@@ -5,11 +14,22 @@ const BOUND_ATTR = "data-helper-hub-drop";
 /** Chat roots with an upload still in flight. A second drop on the same element is ignored. */
 const uploading = new WeakSet();
 
+/** Chat messages whose YouTube player was already started this session. */
+const startedChatVideos = new Set();
+
+/** @type {YT.Player | null} */
+let chatPlayer = null;
+
+let chatToken = 0;
+
 /**
  * Bind file-drop handling to each chat log, including the popped-out window.
  * renderChatLog passes the application element as an HTMLElement.
  */
 export function registerChatImageDrop() {
+  Hooks.on("chatMessage", onChatMessage);
+  Hooks.on("renderChatMessageHTML", onRenderChatMessageHTML);
+
   Hooks.once("ready", () => {
     if (!game.user.isGM) return;
     ensureChatDirectory().catch(err => {
@@ -38,17 +58,29 @@ function bindChatImageDrop(root) {
   };
 
   root.addEventListener("dragenter", event => {
-    if (!dragHasFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    depth += 1;
-    root.classList.add(DROP_CLASS);
+    if (dragHasFiles(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      depth += 1;
+      root.classList.add(DROP_CLASS);
+      return;
+    }
+    if (dragHasLink(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    }
   });
 
   root.addEventListener("dragover", event => {
-    if (!dragHasFiles(event.dataTransfer)) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+    if (dragHasFiles(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      return;
+    }
+    if (dragHasLink(event.dataTransfer)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    }
   });
 
   root.addEventListener("dragleave", () => {
@@ -74,7 +106,10 @@ function bindChatImageDrop(root) {
  */
 async function handleDrop(root, event) {
   const files = Array.from(event.dataTransfer?.files ?? []);
-  if (!files.length) return;
+  if (!files.length) {
+    await handleUrlDrop(event);
+    return;
+  }
 
   const images = files.filter(isImageFile);
   if (!images.length) {
@@ -179,6 +214,21 @@ function dragHasFiles(dataTransfer) {
 }
 
 /**
+ * URL drags need dragover prevented or the browser never fires drop.
+ * File drags stay on the existing path. The payload is only read on drop.
+ * @param {DataTransfer | null | undefined} dataTransfer
+ * @returns {boolean}
+ */
+function dragHasLink(dataTransfer) {
+  const types = dataTransfer?.types;
+  if (!types || dragHasFiles(dataTransfer)) return false;
+  for (const type of types) {
+    if ((type === "text/uri-list") || (type === "text/plain")) return true;
+  }
+  return false;
+}
+
+/**
  * @param {File} file
  * @returns {boolean}
  */
@@ -230,6 +280,153 @@ function isSafeUploadPath(path) {
   const segments = path.split("/");
   if (segments.some(segment => (segment === "") || (segment === ".."))) return false;
   return true;
+}
+
+/**
+ * Hooks.call does not await. Return false immediately so Foundry does not also post the raw URL.
+ * A sentence that merely contains a link is not a single https URL and falls through.
+ * @param {ChatLog} _log
+ * @param {string} message
+ * @returns {false | void}
+ */
+function onChatMessage(_log, message) {
+  const url = parseHttpsUrl(message);
+  if (!url) return;
+  const media = classifyHttpsUrl(url);
+  if (!media) return;
+  void postChatMedia(media).catch(err => {
+    console.warn(`${MODULE_ID} | Failed to post a chat link.`, err);
+    ui.notifications.warn(game.i18n.localize("HELPERHUB.DropPostFailed"));
+  });
+  return false;
+}
+
+/**
+ * @param {DragEvent} event
+ * @returns {Promise<void>}
+ */
+async function handleUrlDrop(event) {
+  const dragged = readDraggedUrl(event.dataTransfer);
+  if (dragged.kind !== "url") return;
+
+  const media = classifyHttpsUrl(dragged.url);
+  event.preventDefault();
+  if (!media) {
+    ui.notifications.warn(game.i18n.localize("HELPERHUB.DropUrlUnsupported"));
+    return;
+  }
+
+  event.stopPropagation();
+  try {
+    await postChatMedia(media);
+  } catch (err) {
+    console.warn(`${MODULE_ID} | Failed to post a dropped chat link.`, err);
+    ui.notifications.warn(game.i18n.localize("HELPERHUB.DropPostFailed"));
+  }
+}
+
+/**
+ * @param {URL} url
+ * @returns {{kind: "image", url: URL} | {kind: "youtube", video: {id: string, start: number | null, href: string}} | null}
+ */
+function classifyHttpsUrl(url) {
+  if (url.protocol !== "https:") return null;
+  if (isImageUrl(url, CONST.IMAGE_FILE_EXTENSIONS)) return {kind: "image", url};
+  const video = parseYouTubeUrl(url);
+  return video ? {kind: "youtube", video} : null;
+}
+
+/**
+ * @param {{kind: "image", url: URL} | {kind: "youtube", video: {id: string, start: number | null, href: string}}} media
+ * @returns {Promise<void>}
+ */
+async function postChatMedia(media) {
+  const content = media.kind === "image" ? imageUrlMessageContent(media.url) : youtubeMessageContent(media.video);
+  await ChatMessage.create({
+    content,
+    style: CONST.CHAT_MESSAGE_STYLES.OOC
+  }, {messageMode: "public"});
+}
+
+/**
+ * @param {{id: string, start: number | null, href: string}} video
+ * @returns {string}
+ */
+function youtubeMessageContent(video) {
+  const src = youtubeEmbedURL(video.href, video.id, video.start);
+  const embed = new URL(src);
+  if (embed.protocol !== "https:") throw new Error("Refusing a non-https YouTube embed.");
+
+  const iframe = document.createElement("iframe");
+  iframe.id = `helper-hub-yt-${foundry.utils.randomID()}`;
+  iframe.className = "helper-hub-youtube";
+  iframe.setAttribute("src", embed.href);
+  iframe.setAttribute("title", "YouTube");
+  return iframe.outerHTML;
+}
+
+/**
+ * @param {ChatMessage} message
+ * @param {HTMLElement} html
+ */
+function onRenderChatMessageHTML(message, html) {
+  if (!(html instanceof HTMLElement) || !message?.id || startedChatVideos.has(message.id)) return;
+  const iframe = html.querySelector("iframe.helper-hub-youtube");
+  if (!(iframe instanceof HTMLIFrameElement)) return;
+  if (!iframe.id) iframe.id = `helper-hub-yt-${message.id}`;
+  startedChatVideos.add(message.id);
+  void startChatYouTube(message.id, iframe);
+}
+
+/**
+ * @param {string} messageId
+ * @param {HTMLIFrameElement} iframe
+ * @returns {Promise<void>}
+ */
+async function startChatYouTube(messageId, iframe) {
+  const token = ++chatToken;
+  stopChatPlayer();
+  try {
+    const player = await game.video.getYouTubePlayer(iframe.id);
+    if (token !== chatToken) {
+      try { player.stopVideo(); } catch { /* a newer chat video replaced this one */ }
+      return;
+    }
+    chatPlayer = player;
+    try { player.setVolume(chatYouTubeVolume()); } catch { /* volume applies again from the slider */ }
+    try { player.playVideo(); } catch { /* autoplay can be blocked; the controls stay visible */ }
+  } catch (err) {
+    startedChatVideos.delete(messageId);
+    if (token === chatToken) console.warn(`${MODULE_ID} | Could not start a chat YouTube player.`, err);
+  }
+}
+
+function stopChatPlayer() {
+  const player = chatPlayer;
+  chatPlayer = null;
+  if (!player) return;
+  try {
+    player.stopVideo();
+  } catch {
+    try { player.pauseVideo(); } catch { /* the iframe was already removed */ }
+  }
+}
+
+/**
+ * @returns {void}
+ */
+export function refreshChatYouTubeVolume() {
+  if (!chatPlayer) return;
+  try { chatPlayer.setVolume(chatYouTubeVolume()); } catch { /* the player is gone */ }
+}
+
+/**
+ * @param {URL} url
+ * @returns {string}
+ */
+function imageUrlMessageContent(url) {
+  if (!(url instanceof URL) || (url.protocol !== "https:")) throw new Error("Refusing a non-https image.");
+  return imageMessageContent([url.href]);
 }
 
 /**

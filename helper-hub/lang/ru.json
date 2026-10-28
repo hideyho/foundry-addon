@@ -14,5 +14,10 @@
   "HELPERHUB.DropNoPermission": "У вас нет права загружать файлы.",
   "HELPERHUB.DropUploadFailed": "Не удалось загрузить изображение.",
   "HELPERHUB.DropPostFailed": "Изображения загрузились, но отправить сообщение в чат не удалось.",
-  "HELPERHUB.DropBusy": "Изображения уже загружаются. Подождите немного."
+  "HELPERHUB.DropBusy": "Изображения уже загружаются. Подождите немного.",
+  "HELPERHUB.DropUrlUnsupported": "В чат можно перетащить только ссылку на изображение или видео YouTube.",
+  "HELPERHUB.PlaylistYouTube": "Добавить видео YouTube",
+  "HELPERHUB.PlaylistYouTubeUrl": "Ссылка на YouTube",
+  "HELPERHUB.PlaylistNoModify": "Нельзя изменить этот плейлист.",
+  "HELPERHUB.PlaylistNotYouTube": "Это не ссылка на YouTube."
 }
