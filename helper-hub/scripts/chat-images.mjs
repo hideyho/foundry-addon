@@ -176,18 +176,20 @@ async function handleDrop(root, event) {
 }
 
 /**
- * Create modules/helper-hub/storage/chat when a GM is present.
- * browse rejects with an Error when the directory is missing. createDirectory is not recursive
- * and the server only allows it for a GM, so players never call it.
+ * Create modules/helper-hub/storage/<child> when a GM is present.
+ * The storage parent is created first. browse rejects with an Error when the directory
+ * is missing. createDirectory is not recursive and the server only allows it for a GM,
+ * so players never call it.
+ * @param {string} child Folder under the module storage root, such as "chat" or "tokens".
  * @returns {Promise<void>}
  */
-async function ensureChatDirectory() {
+export async function ensureStorageDirectory(child) {
   if (!game.user.isGM) return;
 
   const picker = foundry.applications.apps.FilePicker;
   const storage = `modules/${MODULE_ID}/storage`;
-  const chat = `${storage}/chat`;
-  for (const target of [storage, chat]) {
+  const nested = `${storage}/${child}`;
+  for (const target of [storage, nested]) {
     try {
       await picker.browse("data", target);
     }
@@ -207,6 +209,14 @@ async function ensureChatDirectory() {
       }
     }
   }
+}
+
+/**
+ * Create modules/helper-hub/storage/chat when a GM is present.
+ * @returns {Promise<void>}
+ */
+export async function ensureChatDirectory() {
+  await ensureStorageDirectory("chat");
 }
 
 /**
@@ -253,7 +263,7 @@ function isImageFile(file) {
  * @param {File} file
  * @returns {Promise<string | null>} A safe relative path, or null when the upload failed.
  */
-async function uploadChatImage(file) {
+export async function uploadChatImage(file) {
   const safe = file.name.replace(/[^\w.\-]+/g, "_");
   const renamed = new File([file], `${foundry.utils.randomID()}-${safe}`, {type: file.type});
 
@@ -279,7 +289,7 @@ async function uploadChatImage(file) {
  * @param {unknown} path
  * @returns {path is string}
  */
-function isSafeUploadPath(path) {
+export function isSafeUploadPath(path) {
   if (typeof path !== "string" || !path) return false;
   if (/[\s"'<>`]/.test(path)) return false;
   if (path.includes("\\")) return false;

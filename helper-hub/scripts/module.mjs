@@ -1,4 +1,8 @@
+import {registerChatActors} from "./chat-actor.mjs";
+import {registerTokenFrames} from "./token-frame.mjs";
+import {clearStatusOverlays, refreshStatusOverlays, registerStatusOverlays} from "./status-overlays.mjs";
 import {refreshChatYouTubeVolume, registerChatImageDrop} from "./chat-images.mjs";
+import {registerJournalPins, registerJournalPinWrappers} from "./journal-pins.mjs";
 import {
   onPlaylistDrop,
   refreshPlaylistYouTubeVolumes,
@@ -46,7 +50,12 @@ Hooks.once("init", () => {
   }
 
   registerSettings();
+  registerSettingsGroups();
   registerChatImageDrop();
+  registerChatActors();
+  registerTokenFrames();
+  registerStatusOverlays();
+  registerJournalPins();
   watchPlaylistYouTubeSetting();
 
   Hooks.on("globalPlaylistVolumeChanged", volume => {
@@ -65,10 +74,12 @@ Hooks.once("init", () => {
     libWrapper.register(MODULE_ID, "PlaylistSound.prototype.sync", syncPlaylistSound, "MIXED");
     registerPlaylistDrop();
     registerPlaylistYouTubeMenu();
+    registerJournalPinWrappers();
   }
   else {
     console.warn(`${MODULE_ID} | libWrapper is not available; automatic scene transitions are disabled.`);
     console.warn(`${MODULE_ID} | libWrapper is not available; YouTube playlist tracks will not play.`);
+    console.warn(`${MODULE_ID} | libWrapper is not available; journal page drops and hover previews are disabled.`);
   }
 
   bindTvStaticFrame(onFilterApplied);
@@ -93,8 +104,86 @@ function registerPlaylistDrop() {
   }
 }
 
+/**
+ * Headings inside the single Helper Hub category. Foundry will not add extra sidebar categories.
+ * @type {Array<[string, string[]]>}
+ */
+const SETTINGS_GROUPS = [
+  ["HELPERHUB.SettingsChat", ["chatImages", "chatLinks", "chatActors"]],
+  ["HELPERHUB.SettingsPlaylists", ["playlistYouTube"]],
+  ["HELPERHUB.SettingsScenes", [
+    "auto",
+    "force",
+    "duration",
+    "intensity",
+    "volume",
+    "transition",
+    "customAnimation",
+    "customMode",
+    "journalPins",
+    "statusAnimations"
+  ]]
+];
+
+const SETTINGS_HEADING_CLASS = "helper-hub-settings-heading";
+
+/** @type {WeakSet<HTMLInputElement>} */
+const boundSettingsSearches = new WeakSet();
+
+/** @type {MutationObserver | null} */
+let settingsHeadingObserver = null;
+
 function registerSettings() {
   const {BooleanField, NumberField, StringField} = foundry.data.fields;
+
+  for (const [key, name, hint] of [
+    ["chatImages", "HELPERHUB.ChatImagesName", "HELPERHUB.ChatImagesHint"],
+    ["chatLinks", "HELPERHUB.ChatLinksName", "HELPERHUB.ChatLinksHint"],
+    ["chatActors", "HELPERHUB.ChatActorsName", "HELPERHUB.ChatActorsHint"]
+  ]) {
+    game.settings.register(MODULE_ID, key, {
+      name,
+      hint,
+      scope: "world",
+      config: true,
+      type: new BooleanField({initial: true}),
+      default: true
+    });
+  }
+
+  game.settings.register(MODULE_ID, "playlistYouTube", {
+    name: "HELPERHUB.PlaylistYouTubeName",
+    hint: "HELPERHUB.PlaylistYouTubeHint",
+    scope: "world",
+    config: true,
+    type: new BooleanField({initial: true}),
+    default: true,
+    onChange: value => {
+      if (value === false) stopLivePlaylistYouTube();
+    }
+  });
+
+  game.settings.register(MODULE_ID, "journalPins", {
+    name: "HELPERHUB.JournalPinsName",
+    hint: "HELPERHUB.JournalPinsHint",
+    scope: "world",
+    config: true,
+    type: new BooleanField({initial: true}),
+    default: true
+  });
+
+  game.settings.register(MODULE_ID, "statusAnimations", {
+    name: "HELPERHUB.StatusAnimationsName",
+    hint: "HELPERHUB.StatusAnimationsHint",
+    scope: "client",
+    config: true,
+    type: new BooleanField({initial: true}),
+    default: true,
+    onChange: enabled => {
+      if (enabled === false) clearStatusOverlays();
+      else refreshStatusOverlays(canvas?.tokens?.placeables);
+    }
+  });
 
   game.settings.register(MODULE_ID, "auto", {
     name: "HELPERHUB.AutoName",
@@ -210,32 +299,131 @@ function registerSettings() {
     }),
     default: "play"
   });
+}
 
-  for (const [key, name, hint] of [
-    ["chatImages", "HELPERHUB.ChatImagesName", "HELPERHUB.ChatImagesHint"],
-    ["chatLinks", "HELPERHUB.ChatLinksName", "HELPERHUB.ChatLinksHint"]
-  ]) {
-    game.settings.register(MODULE_ID, key, {
-      name,
-      hint,
-      scope: "world",
-      config: true,
-      type: new BooleanField({initial: true}),
-      default: true
+/**
+ * Group the Helper Hub category into Chat, Playlists, and Scenes.
+ * renderSettingsConfig receives the application element (ApplicationV2). A fresh render has no headings yet.
+ */
+function registerSettingsGroups() {
+  Hooks.on("renderSettingsConfig", (app, html) => {
+    const root = html instanceof HTMLElement ? html : app?.element;
+    if (!(root instanceof HTMLElement)) return;
+    const section = root.querySelector(`section[data-category="${MODULE_ID}"]`);
+    if (!section) return;
+    layoutSettingsGroups(section);
+    bindSettingsGroupSearch(root, section);
+  });
+
+  Hooks.on("closeSettingsConfig", () => {
+    settingsHeadingObserver?.disconnect();
+    settingsHeadingObserver = null;
+  });
+}
+
+/**
+ * @param {HTMLElement} section
+ */
+function layoutSettingsGroups(section) {
+  section.querySelectorAll(`:scope > h3.${SETTINGS_HEADING_CLASS}`).forEach(heading => heading.remove());
+
+  const ordered = document.createDocumentFragment();
+  const seen = new Set();
+  for (const [labelKey, keys] of SETTINGS_GROUPS) {
+    const groups = [];
+    for (const key of keys) {
+      const group = settingFormGroup(section, key);
+      if (!group || seen.has(group)) continue;
+      seen.add(group);
+      groups.push(group);
+    }
+    if (!groups.length) continue;
+
+    const heading = document.createElement("h3");
+    heading.className = `divider ${SETTINGS_HEADING_CLASS}`;
+    heading.textContent = game.i18n.localize(labelKey);
+    ordered.append(heading, ...groups);
+  }
+  if (ordered.childNodes.length) section.prepend(ordered);
+}
+
+/**
+ * The form-group whose input, select, file-picker, or other field name is helper-hub.<key>.
+ * @param {HTMLElement} section
+ * @param {string} key
+ * @returns {HTMLElement | null}
+ */
+function settingFormGroup(section, key) {
+  const name = `${MODULE_ID}.${key}`;
+  const field = section.querySelector(
+    `input[name="${name}"], select[name="${name}"], file-picker[name="${name}"], [name="${name}"]`
+  );
+  const group = field?.closest(".form-group");
+  return group instanceof HTMLElement ? group : null;
+}
+
+/**
+ * SearchFilter hides .form-group rows. Headings are not rows, so hide one when its group has no visible setting.
+ * The filter callback is debounced, so the input listener's microtask only sees a synchronous pass.
+ * Later hidden-attribute writes are what the debounced pass actually does.
+ * @param {HTMLElement} root
+ * @param {HTMLElement} section
+ */
+function bindSettingsGroupSearch(root, section) {
+  const input = root.querySelector("input[type=search]");
+  if (!(input instanceof HTMLInputElement)) return;
+
+  const sync = () => syncSettingsHeadings(section, input.value);
+  if (!boundSettingsSearches.has(input)) {
+    boundSettingsSearches.add(input);
+    input.addEventListener("input", () => {
+      queueMicrotask(sync);
     });
   }
 
-  game.settings.register(MODULE_ID, "playlistYouTube", {
-    name: "HELPERHUB.PlaylistYouTubeName",
-    hint: "HELPERHUB.PlaylistYouTubeHint",
-    scope: "world",
-    config: true,
-    type: new BooleanField({initial: true}),
-    default: true,
-    onChange: value => {
-      if (value === false) stopLivePlaylistYouTube();
-    }
+  settingsHeadingObserver?.disconnect();
+  settingsHeadingObserver = new MutationObserver(records => {
+    const settingsChanged = records.some(record => {
+      const target = record.target;
+      return !(target instanceof HTMLElement) || !target.classList.contains(SETTINGS_HEADING_CLASS);
+    });
+    if (settingsChanged) sync();
   });
+  settingsHeadingObserver.observe(section, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+  sync();
+}
+
+/**
+ * An empty query shows every heading. Otherwise a heading is hidden when no following form-group
+ * before the next heading is visible.
+ * @param {HTMLElement} section
+ * @param {string} query
+ */
+function syncSettingsHeadings(section, query) {
+  if (!section.isConnected) return;
+  const showAll = query.trim() === "";
+  const headings = section.querySelectorAll(`:scope > h3.${SETTINGS_HEADING_CLASS}`);
+  for (const heading of headings) {
+    if (!(heading instanceof HTMLElement)) continue;
+    heading.hidden = showAll ? false : !headingHasVisibleSetting(heading);
+  }
+}
+
+/**
+ * @param {Element} heading
+ * @returns {boolean}
+ */
+function headingHasVisibleSetting(heading) {
+  let sibling = heading.nextElementSibling;
+  while (sibling && !sibling.classList.contains(SETTINGS_HEADING_CLASS)) {
+    if (sibling.classList.contains("form-group") && (sibling instanceof HTMLElement) && !sibling.hidden) return true;
+    sibling = sibling.nextElementSibling;
+  }
+  return false;
 }
 
 /**
