@@ -230,4 +230,187 @@
     pointer-events: none;
     border: 0;
   }
+
+  .helper-hub-discord {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .helper-hub-discord .form-group {
+    margin: 0;
+  }
+
+  .helper-hub-discord select,
+  .helper-hub-discord input[type="password"] {
+    width: 100%;
+    margin: 0;
+  }
+
+  .helper-hub-discord-connect {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+  }
+
+  .helper-hub-discord-connect-button {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+  }
+
+  .helper-hub-discord-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    flex: 1 1 12rem;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .helper-hub-discord-status-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .helper-hub-discord-status .fa-spinner {
+    display: none;
+    flex: 0 0 auto;
+  }
+
+  .helper-hub-discord-status.is-connecting .fa-spinner {
+    display: inline-block;
+  }
+
+  .helper-hub-discord-enabled {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    line-height: normal;
+    cursor: var(--cursor-pointer);
+  }
+
+  .helper-hub-discord-enabled input {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .helper-hub-discord-hint {
+    margin: 0;
+  }
+
+  .helper-hub-discord-message {
+    overflow-wrap: anywhere;
+  }
+
+  .helper-hub-discord-message img,
+  .helper-hub-discord-message video {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .helper-hub-discord-message audio {
+    display: block;
+    max-width: 100%;
+  }
+
+  .helper-hub-combat-vitals {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+    margin-top: 0.15rem;
+  }
+
+  .helper-hub-combat-hp {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .helper-hub-combat-hp-current {
+    flex: 0 0 auto;
+    font-size: var(--font-size-12, 0.75rem);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .helper-hub-combat-hp-amount {
+    flex: 0 0 2.75rem;
+    width: 2.75rem;
+    min-width: 0;
+    height: 1.4rem;
+    margin: 0;
+    padding: 0 0.25rem;
+    text-align: center;
+  }
+
+  .helper-hub-combat-vitals button {
+    flex: 0 0 auto;
+    width: 1.4rem;
+    height: 1.4rem;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+  }
+
+  /* The icon must not be the click target. Foundry selects the token unless the target is the button. */
+  .helper-hub-combat-status i {
+    pointer-events: none;
+  }
+
+  /* On document.body. The tracker's scrollport must not be the containing block. */
+  .helper-hub-combat-statuses {
+    position: fixed;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: max-content;
+    min-width: 9rem;
+    max-width: min(16rem, calc(100vw - 1rem));
+    max-height: min(18rem, calc(100vh - 1rem));
+    margin: 0;
+    padding: 0.3rem;
+    overflow: auto;
+    background: var(--sidebar-background, #1c1c1c);
+    border: 1px solid var(--color-border-dark-primary, #000);
+    border-radius: 4px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  }
+
+  .helper-hub-combat-status-choice {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 0.15rem 0.3rem;
+    text-align: start;
+  }
+
+  .helper-hub-combat-status-choice.is-active {
+    outline: 1px solid var(--color-warm-2, #b04545);
+    background: rgb(255 255 255 / 10%);
+  }
+
+  .helper-hub-combat-status-choice img {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: 0 0 auto;
+    object-fit: contain;
+    border: 0;
+    pointer-events: none;
+  }
+
+  .helper-hub-combat-status-choice span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }

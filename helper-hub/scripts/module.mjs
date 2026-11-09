@@ -1,6 +1,9 @@
 import {registerChatActors} from "./chat-actor.mjs";
+import {registerDiscordChat} from "./discord-chat.mjs";
 import {registerTokenFrames} from "./token-frame.mjs";
+import {registerNpcTokenNames} from "./token-names.mjs";
 import {clearStatusOverlays, refreshStatusOverlays, registerStatusOverlays} from "./status-overlays.mjs";
+import {refreshCombatTrackers, registerCombatVitals} from "./combat-vitals.mjs";
 import {refreshChatYouTubeVolume, registerChatImageDrop} from "./chat-images.mjs";
 import {registerJournalPins, registerJournalPinWrappers} from "./journal-pins.mjs";
 import {
@@ -53,8 +56,11 @@ Hooks.once("init", () => {
   registerSettingsGroups();
   registerChatImageDrop();
   registerChatActors();
+  registerDiscordChat();
   registerTokenFrames();
+  registerNpcTokenNames();
   registerStatusOverlays();
+  registerCombatVitals();
   registerJournalPins();
   watchPlaylistYouTubeSetting();
 
@@ -109,7 +115,7 @@ function registerPlaylistDrop() {
  * @type {Array<[string, string[]]>}
  */
 const SETTINGS_GROUPS = [
-  ["HELPERHUB.SettingsChat", ["chatImages", "chatLinks", "chatActors"]],
+  ["HELPERHUB.SettingsChat", ["chatImages", "chatLinks", "chatActors", "discordChat"]],
   ["HELPERHUB.SettingsPlaylists", ["playlistYouTube"]],
   ["HELPERHUB.SettingsScenes", [
     "auto",
@@ -121,8 +127,10 @@ const SETTINGS_GROUPS = [
     "customAnimation",
     "customMode",
     "journalPins",
+    "npcTokenNames",
     "statusAnimations"
-  ]]
+  ]],
+  ["HELPERHUB.SettingsCombat", ["combatVitals"]]
 ];
 
 const SETTINGS_HEADING_CLASS = "helper-hub-settings-heading";
@@ -170,6 +178,27 @@ function registerSettings() {
     config: true,
     type: new BooleanField({initial: true}),
     default: true
+  });
+
+  game.settings.register(MODULE_ID, "npcTokenNames", {
+    name: "HELPERHUB.NpcTokenNamesName",
+    hint: "HELPERHUB.NpcTokenNamesHint",
+    scope: "world",
+    config: true,
+    type: new BooleanField({initial: true}),
+    default: true
+  });
+
+  game.settings.register(MODULE_ID, "combatVitals", {
+    name: "HELPERHUB.CombatVitalsName",
+    hint: "HELPERHUB.CombatVitalsHint",
+    scope: "world",
+    config: true,
+    type: new BooleanField({initial: true}),
+    default: true,
+    onChange: () => {
+      refreshCombatTrackers();
+    }
   });
 
   game.settings.register(MODULE_ID, "statusAnimations", {
@@ -302,7 +331,7 @@ function registerSettings() {
 }
 
 /**
- * Group the Helper Hub category into Chat, Playlists, and Scenes.
+ * Group the Helper Hub category into Chat, Playlists, Scenes, and Combat.
  * renderSettingsConfig receives the application element (ApplicationV2). A fresh render has no headings yet.
  */
 function registerSettingsGroups() {
@@ -348,7 +377,8 @@ function layoutSettingsGroups(section) {
 }
 
 /**
- * The form-group whose input, select, file-picker, or other field name is helper-hub.<key>.
+ * The form-group whose input, select, file-picker, menu button, or other field is helper-hub.<key>.
+ * Menu buttons are identified by data-key. They have no name attribute.
  * @param {HTMLElement} section
  * @param {string} key
  * @returns {HTMLElement | null}
@@ -356,7 +386,7 @@ function layoutSettingsGroups(section) {
 function settingFormGroup(section, key) {
   const name = `${MODULE_ID}.${key}`;
   const field = section.querySelector(
-    `input[name="${name}"], select[name="${name}"], file-picker[name="${name}"], [name="${name}"]`
+    `input[name="${name}"], select[name="${name}"], file-picker[name="${name}"], [name="${name}"], button[data-key="${name}"]`
   );
   const group = field?.closest(".form-group");
   return group instanceof HTMLElement ? group : null;
