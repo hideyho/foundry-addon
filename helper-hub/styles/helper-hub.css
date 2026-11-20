@@ -413,4 +413,127 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
+
+  /* Display screen: a non-GM account used for a TV or monitor. The canvas (#board) stays visible. */
+  body.helper-hub-display #interface,
+  body.helper-hub-display #hud,
+  body.helper-hub-display #notifications,
+  body.helper-hub-display #tooltip,
+  body.helper-hub-display #context-menu,
+  body.helper-hub-display #camera-views,
+  body.helper-hub-display #pause,
+  body.helper-hub-display .application {
+    display: none !important;
+  }
+
+  body.helper-hub-display,
+  body.helper-hub-display #board {
+    cursor: none;
+  }
+
+  body.helper-hub-display #board {
+    pointer-events: none !important;
+  }
+
+  /*
+   * Display screen: content the GM showed to players (shared image popouts and journals). The shared-content
+   * script puts .helper-hub-shared on exactly those windows; every other .application stays hidden above.
+   * Foundry positions windows with inline left/top/width/height/transform, so these rules use !important.
+   * Shared windows are never interactive here: no pointer events, no header, no resize handle.
+   * They all cover the whole screen (position: fixed; inset: 0), so shared windows stack: the newest one is on
+   * top, and closing it reveals the previous one. This rule has higher specificity than the hide rule above, so
+   * it wins whatever the order of the two.
+   */
+  body.helper-hub-display .application.helper-hub-shared {
+    display: flex !important;
+    position: fixed !important;
+    inset: 0 !important;
+    margin: auto !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: none !important;
+    pointer-events: none !important;
+    user-select: none !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared * {
+    pointer-events: none !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared .window-header,
+  body.helper-hub-display .application.helper-hub-shared .window-resize-handle {
+    display: none !important;
+  }
+
+  /* Image: the picture fills the screen minus a margin, scaled to fit with its aspect ratio kept. */
+  body.helper-hub-display .application.helper-hub-shared-image {
+    width: 100vw !important;
+    height: 100vh !important;
+    padding: 4vmin !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: rgb(0 0 0 / 70%) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared-image .window-content {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared-image figure {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared-image figure :is(img, video) {
+    flex: 1 1 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    object-fit: contain !important;
+    object-position: 50% 50% !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared-image figure figcaption {
+    flex: none;
+    margin-top: 2vmin !important;
+    color: #fff;
+    font-size: clamp(1rem, 2.6vmin, 2.5rem) !important;
+    text-align: center;
+  }
+
+  /* Journal: a large readable window; the dimmed backdrop is a box-shadow because the window is opaque. */
+  body.helper-hub-display .application.helper-hub-shared-journal {
+    width: 90vw !important;
+    height: 90vh !important;
+    font-size: clamp(15px, 2vmin, 28px) !important;
+    box-shadow: 0 0 0 200vmax rgb(0 0 0 / 65%) !important;
+  }
+
+  body.helper-hub-display .application.helper-hub-shared-journal :is(.journal-sidebar, .edit-container) {
+    display: none !important;
+  }
+
+  /*
+   * The display user cannot scroll (wheel and pointer events are blocked, the sidebar and scrollbar are hidden).
+   * The shared-content script scrolls this container from the GM's scroll position, so it must stay a scroll
+   * container (overflow auto) and jump instantly.
+   */
+  body.helper-hub-display .application.helper-hub-shared-journal .journal-entry-pages {
+    overflow-y: auto !important;
+    scroll-behavior: auto !important;
+    scrollbar-width: none;
+  }
 }

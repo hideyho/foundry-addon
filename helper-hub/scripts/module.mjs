@@ -6,6 +6,8 @@ import {clearStatusOverlays, refreshStatusOverlays, registerStatusOverlays} from
 import {refreshCombatTrackers, registerCombatVitals} from "./combat-vitals.mjs";
 import {refreshChatYouTubeVolume, registerChatImageDrop} from "./chat-images.mjs";
 import {registerJournalPins, registerJournalPinWrappers} from "./journal-pins.mjs";
+import {registerDisplayScreen, registerDisplayScreenWrappers} from "./display-screen.mjs";
+import {registerSharedContent} from "./shared-content.mjs";
 import {
   onPlaylistDrop,
   refreshPlaylistYouTubeVolumes,
@@ -62,6 +64,8 @@ Hooks.once("init", () => {
   registerStatusOverlays();
   registerCombatVitals();
   registerJournalPins();
+  registerDisplayScreen();
+  registerSharedContent();
   watchPlaylistYouTubeSetting();
 
   Hooks.on("globalPlaylistVolumeChanged", volume => {
@@ -81,11 +85,14 @@ Hooks.once("init", () => {
     registerPlaylistDrop();
     registerPlaylistYouTubeMenu();
     registerJournalPinWrappers();
+    registerDisplayScreenWrappers();
   }
   else {
     console.warn(`${MODULE_ID} | libWrapper is not available; automatic scene transitions are disabled.`);
     console.warn(`${MODULE_ID} | libWrapper is not available; YouTube playlist tracks will not play.`);
     console.warn(`${MODULE_ID} | libWrapper is not available; journal page drops and hover previews are disabled.`);
+    console.warn(`${MODULE_ID} | libWrapper is not available; display screens cannot block token control.`);
+    console.warn(`${MODULE_ID} | libWrapper is not available; shared images and journals are tracked with direct patches, which may conflict with other modules.`);
   }
 
   bindTvStaticFrame(onFilterApplied);
